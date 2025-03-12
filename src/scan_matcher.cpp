@@ -82,9 +82,19 @@ private:
     std::vector<Point2D> transformPoints(const std::vector<Point2D> &points, double dx, double dy, double dtheta) {
         std::vector<Point2D> transformed_points(points.size());
         Point2D tmp;
+
+        if (dtheta == 0.0) {
+            for (const auto &point : points) {
+                tmp.x = point.x + dx;
+                tmp.y = point.y + dy;
+                transformed_points.push_back(tmp);
+            }
+            return transformed_points;
+        }
+
         for (const auto &point : points) {
-            tmp.x = std::cos(dtheta) * point.x + std::sin(dtheta) * point.y + dx;
-            tmp.y = -std::sin(dtheta) * point.x + std::cos(dtheta) * point.y + dy;
+            tmp.x = std::cos(dtheta) * point.x - std::sin(dtheta) * point.y + dx;
+            tmp.y = std::sin(dtheta) * point.x + std::cos(dtheta) * point.y + dy;
             transformed_points.push_back(tmp);
         }
         return transformed_points;
@@ -133,9 +143,9 @@ private:
         geometry_msgs::msg::Pose2D pose;
         pose.x = dx;
         pose.y = dy;
-        pose.theta = -dtheta;
+        pose.theta = dtheta;
 
-        RCLCPP_INFO(this->get_logger(), "Optimized transform x: %f y: %f z: %f", dx, dy, -dtheta);
+        RCLCPP_INFO(this->get_logger(), "Optimized transform x: % .4f y: % .4f z: % .4f", dx, dy, dtheta);
 
         return pose;
     }
@@ -154,15 +164,21 @@ private:
         double duration = (end - start).seconds();
         RCLCPP_INFO(this->get_logger(), "Optimization duration: %.3f ms", duration * 1000.0);
 
+        Point2D new_point = {last_tf_.transform.translation.x, last_tf_.transform.translation.y};
+        new_point.x += (delta.x * std::cos(delta.theta) - delta.y * std::sin(delta.theta));
+        new_point.y += (delta.x * std::sin(delta.theta) + delta.y * std::cos(delta.theta));
+
         // publish optimized transform
         geometry_msgs::msg::TransformStamped t;
         t.header.stamp = msg->header.stamp;
         t.header.frame_id = parent_frame_;
         t.child_frame_id = output_frame_;
-        t.transform.translation.x = last_tf_.transform.translation.x + delta.x;
-        t.transform.translation.y = last_tf_.transform.translation.y + delta.y;
-        tf2::Quaternion q;
-        q.setRPY(0, 0, last_theta_ + delta.theta);
+        t.transform.translation.x = new_point.x;
+        t.transform.translation.y = new_point.y;
+        tf2::Quaternion q, q_delta;
+        q.setRPY(0, 0, last_theta_);
+        q_delta.setRPY(0, 0, delta.theta);
+        q *= q_delta;
         t.transform.rotation.x = q.x();
         t.transform.rotation.y = q.y();
         t.transform.rotation.z = q.z();
@@ -175,26 +191,6 @@ private:
     void timerCallback() {
         last_tf_.header.stamp = this->get_clock()->now();
         tf_broadcaster_->sendTransform(last_tf_);
-    }
-
-    geometry_msgs::msg::Transform tf2_to_msg(const tf2::Transform transform) {
-        geometry_msgs::msg::Transform msg;
-        msg.translation.x = transform.getOrigin().getX();
-        msg.translation.y = transform.getOrigin().getY();
-        msg.translation.z = transform.getOrigin().getZ();
-        msg.rotation.x = transform.getRotation().getX();
-        msg.rotation.y = transform.getRotation().getY();
-        msg.rotation.z = transform.getRotation().getZ();
-        msg.rotation.w = transform.getRotation().getW();
-        return msg;
-    }
-
-    tf2::Transform msg_to_tf2(const geometry_msgs::msg::Transform transform) {
-        tf2::Transform tf;
-        tf.setOrigin(tf2::Vector3(transform.translation.x, transform.translation.y, transform.translation.z));
-        tf.setRotation(
-            tf2::Quaternion(transform.rotation.x, transform.rotation.y, transform.rotation.z, transform.rotation.w));
-        return tf;
     }
 };
 
