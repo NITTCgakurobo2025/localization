@@ -24,6 +24,7 @@ def generate_launch_description():
                 'parent_frame': 'map',
                 'input_topic': ['/', name, '/downsampled_front_scan'],
                 'imu_topic': ['/', name, '/imu'],
+                'pose_topic': ['/', name, '/pose'],
                 'odom_reset_service': ['/', name, '/odom_reset'],
             }]
         )

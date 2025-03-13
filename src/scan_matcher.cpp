@@ -1,5 +1,6 @@
 #include <chrono>
 #include <cmath>
+#include <geometry_msgs/msg/pose.hpp>
 #include <geometry_msgs/msg/pose2_d.hpp>
 #include <geometry_msgs/msg/transform_stamped.hpp>
 #include <rclcpp/rclcpp.hpp>
@@ -28,6 +29,7 @@ public:
         // runtime parameters
         this->declare_parameter<std::string>("input_topic", "point_array");
         this->declare_parameter<std::string>("imu_topic", "imu");
+        this->declare_parameter<std::string>("pose_topic", "pose");
         this->declare_parameter<std::string>("target_frame", "base_footprint");
         this->declare_parameter<std::string>("output_frame", "odom");
         this->declare_parameter<std::string>("parent_frame", "map");
@@ -37,6 +39,7 @@ public:
 
         this->get_parameter("input_topic", input_topic_);
         this->get_parameter("imu_topic", imu_topic_);
+        this->get_parameter("pose_topic", pose_topic_);
         this->get_parameter("target_frame", target_frame_);
         this->get_parameter("output_frame", output_frame_);
         this->get_parameter("parent_frame", parent_frame_);
@@ -78,14 +81,17 @@ public:
         imu_theta_ = 0.0;
         scan_theta_ = 0.0;
         imu_last_time_ = this->get_clock()->now().seconds();
+
+        pose_pub_ = this->create_publisher<geometry_msgs::msg::Pose>(pose_topic_, 10);
     }
 
 private:
     rclcpp::Subscription<localization_msgs::msg::PointArray>::SharedPtr input_sub_;
     rclcpp::Subscription<sensor_msgs::msg::Imu>::SharedPtr imu_sub_;
+    rclcpp::Publisher<geometry_msgs::msg::Pose>::SharedPtr pose_pub_;
     std::shared_ptr<rclcpp::Client<localization_msgs::srv::ResetOdometry>> odom_reset_cli_;
     std::shared_ptr<tf2_ros::TransformBroadcaster> tf_broadcaster_;
-    std::string input_topic_, imu_topic_, target_frame_, output_frame_, parent_frame_, odom_reset_service_;
+    std::string input_topic_, imu_topic_, pose_topic_, target_frame_, output_frame_, parent_frame_, odom_reset_service_;
     Rect map_;
     geometry_msgs::msg::TransformStamped last_tf_;
     rclcpp::TimerBase::SharedPtr tf_timer_, odom_reset_timer_;
@@ -200,6 +206,15 @@ private:
         tf_broadcaster_->sendTransform(t);
         last_tf_ = t;
         last_theta_ = new_theta;
+
+        geometry_msgs::msg::Pose pose;
+        pose.position.x = new_point.x;
+        pose.position.y = new_point.y;
+        pose.orientation.x = q.x();
+        pose.orientation.y = q.y();
+        pose.orientation.z = q.z();
+        pose.orientation.w = q.w();
+        pose_pub_->publish(pose);
     }
 
     void imuCallback(const sensor_msgs::msg::Imu::SharedPtr msg) {
