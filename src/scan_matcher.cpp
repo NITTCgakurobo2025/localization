@@ -13,6 +13,7 @@
 #include <vector>
 
 #include "localization_msgs/msg/point_array.hpp"
+#include "localization_msgs/srv/reset_odometry.hpp"
 
 using namespace std::chrono_literals;
 
@@ -33,6 +34,7 @@ public:
         this->declare_parameter<std::string>("target_frame", "base_footprint");
         this->declare_parameter<std::string>("output_frame", "odom");
         this->declare_parameter<std::string>("parent_frame", "map");
+        this->declare_parameter<std::string>("odom_reset_service", "odom_reset");
         this->declare_parameter<double>("field_width", 8.0);
         this->declare_parameter<double>("field_height", 15.0);
 
@@ -41,6 +43,7 @@ public:
         this->get_parameter("target_frame", target_frame_);
         this->get_parameter("output_frame", output_frame_);
         this->get_parameter("parent_frame", parent_frame_);
+        this->get_parameter("odom_reset_service", odom_reset_service_);
 
         double field_width, field_height;
         this->get_parameter("field_width", field_width);
@@ -67,9 +70,13 @@ public:
         tf_buffer_ = std::make_shared<tf2_ros::Buffer>(this->get_clock());
         tf_listener_ = std::make_shared<tf2_ros::TransformListener>(*tf_buffer_);
         tf_broadcaster_ = std::make_shared<tf2_ros::TransformBroadcaster>(this);
-        timer_ = this->create_wall_timer(std::chrono::milliseconds(10), std::bind(&ScanMatcher::timerCallback, this));
+        tf_timer_ =
+            this->create_wall_timer(std::chrono::milliseconds(5), std::bind(&ScanMatcher::tfTimerCallback, this));
+        odom_reset_timer_ = this->create_wall_timer(std::chrono::milliseconds(10),
+                                                    std::bind(&ScanMatcher::odomResetTimerCallback, this));
+        odom_reset_cli_ = this->create_client<localization_msgs::srv::ResetOdometry>(odom_reset_service_);
 
-        last_tf_.header.stamp = this->now();
+        last_tf_.header.stamp = this->get_clock()->now();
         last_tf_.header.frame_id = parent_frame_;
         last_tf_.child_frame_id = output_frame_;
         last_theta_ = 0.0;
@@ -81,13 +88,14 @@ public:
 private:
     rclcpp::Subscription<localization_msgs::msg::PointArray>::SharedPtr input_sub_;
     rclcpp::Subscription<sensor_msgs::msg::Imu>::SharedPtr imu_sub_;
+    std::shared_ptr<rclcpp::Client<localization_msgs::srv::ResetOdometry>> odom_reset_cli_;
     std::shared_ptr<tf2_ros::Buffer> tf_buffer_;
     std::shared_ptr<tf2_ros::TransformListener> tf_listener_;
     std::shared_ptr<tf2_ros::TransformBroadcaster> tf_broadcaster_;
-    std::string input_topic_, imu_topic_, target_frame_, output_frame_, parent_frame_;
+    std::string input_topic_, imu_topic_, target_frame_, output_frame_, parent_frame_, odom_reset_service_;
     Rect map_;
     geometry_msgs::msg::TransformStamped last_tf_;
-    rclcpp::TimerBase::SharedPtr timer_;
+    rclcpp::TimerBase::SharedPtr tf_timer_, odom_reset_timer_;
     double last_theta_, imu_theta_, scan_theta_;
     double imu_last_time_;
 
@@ -213,8 +221,36 @@ private:
         imu_theta_ += msg->angular_velocity.z * dt;
     }
 
-    void timerCallback() {
+    void tfTimerCallback() {
         last_tf_.header.stamp = this->get_clock()->now();
+        tf_broadcaster_->sendTransform(last_tf_);
+    }
+
+    void odomResetTimerCallback() {
+        if (!odom_reset_cli_->wait_for_service(10ms)) {
+            RCLCPP_WARN(this->get_logger(), "Odometry reset service not available, waiting...");
+            return;
+        }
+        auto request = std::make_shared<localization_msgs::srv::ResetOdometry::Request>();
+        odom_reset_cli_->async_send_request(request, std::bind(&ScanMatcher::odomReset, this, std::placeholders::_1));
+    }
+
+    void odomReset(rclcpp::Client<localization_msgs::srv::ResetOdometry>::SharedFuture result) {
+        double x = result.get()->x;
+        double y = result.get()->y;
+        double theta = result.get()->theta;
+
+        RCLCPP_INFO(this->get_logger(), "Odometry reset: x: % .4f y: % .4f z: % .4f", x, y, theta);
+
+        last_tf_.header.stamp = this->get_clock()->now();
+        last_tf_.transform.translation.x += x * std::cos(last_theta_) - y * std::sin(last_theta_);
+        last_tf_.transform.translation.y += x * std::sin(last_theta_) + y * std::cos(last_theta_);
+        tf2::Quaternion q;
+        q.setRPY(0, 0, last_theta_ + theta);
+        last_tf_.transform.rotation.x = q.x();
+        last_tf_.transform.rotation.y = q.y();
+        last_tf_.transform.rotation.z = q.z();
+        last_tf_.transform.rotation.w = q.w();
         tf_broadcaster_->sendTransform(last_tf_);
     }
 };
