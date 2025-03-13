@@ -6,10 +6,7 @@
 #include <sensor_msgs/msg/imu.hpp>
 #include <string>
 #include <tf2/LinearMath/Quaternion.h>
-#include <tf2/LinearMath/Transform.h>
-#include <tf2_ros/buffer.h>
 #include <tf2_ros/transform_broadcaster.h>
-#include <tf2_ros/transform_listener.h>
 #include <vector>
 
 #include "localization_msgs/msg/point_array.hpp"
@@ -67,8 +64,6 @@ public:
             input_topic_, 10, std::bind(&ScanMatcher::topicCallback, this, std::placeholders::_1));
         imu_sub_ = this->create_subscription<sensor_msgs::msg::Imu>(
             imu_topic_, 10, std::bind(&ScanMatcher::imuCallback, this, std::placeholders::_1));
-        tf_buffer_ = std::make_shared<tf2_ros::Buffer>(this->get_clock());
-        tf_listener_ = std::make_shared<tf2_ros::TransformListener>(*tf_buffer_);
         tf_broadcaster_ = std::make_shared<tf2_ros::TransformBroadcaster>(this);
         tf_timer_ =
             this->create_wall_timer(std::chrono::milliseconds(5), std::bind(&ScanMatcher::tfTimerCallback, this));
@@ -89,8 +84,6 @@ private:
     rclcpp::Subscription<localization_msgs::msg::PointArray>::SharedPtr input_sub_;
     rclcpp::Subscription<sensor_msgs::msg::Imu>::SharedPtr imu_sub_;
     std::shared_ptr<rclcpp::Client<localization_msgs::srv::ResetOdometry>> odom_reset_cli_;
-    std::shared_ptr<tf2_ros::Buffer> tf_buffer_;
-    std::shared_ptr<tf2_ros::TransformListener> tf_listener_;
     std::shared_ptr<tf2_ros::TransformBroadcaster> tf_broadcaster_;
     std::string input_topic_, imu_topic_, target_frame_, output_frame_, parent_frame_, odom_reset_service_;
     Rect map_;
@@ -239,8 +232,6 @@ private:
         double x = result.get()->x;
         double y = result.get()->y;
         double theta = result.get()->theta;
-
-        RCLCPP_INFO(this->get_logger(), "Odometry reset: x: % .4f y: % .4f z: % .4f", x, y, theta);
 
         last_tf_.header.stamp = this->get_clock()->now();
         last_tf_.transform.translation.x += x * std::cos(last_theta_) - y * std::sin(last_theta_);
