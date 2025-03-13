@@ -22,7 +22,7 @@ find_package(tf2_ros REQUIRED)
 find_package(tf2_geometry_msgs REQUIRED)
 
 add_executable(scan_matcher src/scan_matcher.cpp)
-ament_target_dependencies(scan_matcher rclcpp geometry_msgs tf2 tf2_ros localization_msgs)
+ament_target_dependencies(scan_matcher rclcpp geometry_msgs sensor_msgs tf2 tf2_ros localization_msgs)
 install(TARGETS scan_matcher
   DESTINATION lib/${PROJECT_NAME})
 

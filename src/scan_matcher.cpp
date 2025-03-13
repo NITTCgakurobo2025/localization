@@ -3,6 +3,7 @@
 #include <geometry_msgs/msg/pose2_d.hpp>
 #include <geometry_msgs/msg/transform_stamped.hpp>
 #include <rclcpp/rclcpp.hpp>
+#include <sensor_msgs/msg/imu.hpp>
 #include <string>
 #include <tf2/LinearMath/Quaternion.h>
 #include <tf2/LinearMath/Transform.h>
@@ -12,6 +13,8 @@
 #include <vector>
 
 #include "localization_msgs/msg/point_array.hpp"
+
+using namespace std::chrono_literals;
 
 class ScanMatcher : public rclcpp::Node {
     struct Point2D {
@@ -26,6 +29,7 @@ public:
     ScanMatcher() : Node("scan_matcher") {
         // runtime parameters
         this->declare_parameter<std::string>("input_topic", "point_array");
+        this->declare_parameter<std::string>("imu_topic", "imu");
         this->declare_parameter<std::string>("target_frame", "base_footprint");
         this->declare_parameter<std::string>("output_frame", "odom");
         this->declare_parameter<std::string>("parent_frame", "map");
@@ -33,6 +37,7 @@ public:
         this->declare_parameter<double>("field_height", 15.0);
 
         this->get_parameter("input_topic", input_topic_);
+        this->get_parameter("imu_topic", imu_topic_);
         this->get_parameter("target_frame", target_frame_);
         this->get_parameter("output_frame", output_frame_);
         this->get_parameter("parent_frame", parent_frame_);
@@ -52,11 +57,13 @@ public:
         this->declare_parameter<double>("epsilon", 1e-4);
         this->declare_parameter<double>("learning_rate", 0.1);
         this->declare_parameter<int>("max_iterations", 50);
-        this->declare_parameter<double>("max_step", 0.001);
+        this->declare_parameter<double>("max_step", 0.01);
         this->declare_parameter<double>("max_step_theta", 0.01);
 
         input_sub_ = this->create_subscription<localization_msgs::msg::PointArray>(
             input_topic_, 10, std::bind(&ScanMatcher::topicCallback, this, std::placeholders::_1));
+        imu_sub_ = this->create_subscription<sensor_msgs::msg::Imu>(
+            imu_topic_, 10, std::bind(&ScanMatcher::imuCallback, this, std::placeholders::_1));
         tf_buffer_ = std::make_shared<tf2_ros::Buffer>(this->get_clock());
         tf_listener_ = std::make_shared<tf2_ros::TransformListener>(*tf_buffer_);
         tf_broadcaster_ = std::make_shared<tf2_ros::TransformBroadcaster>(this);
@@ -66,18 +73,23 @@ public:
         last_tf_.header.frame_id = parent_frame_;
         last_tf_.child_frame_id = output_frame_;
         last_theta_ = 0.0;
+        imu_theta_ = 0.0;
+        scan_theta_ = 0.0;
+        imu_last_time_ = this->get_clock()->now().seconds();
     }
 
 private:
     rclcpp::Subscription<localization_msgs::msg::PointArray>::SharedPtr input_sub_;
+    rclcpp::Subscription<sensor_msgs::msg::Imu>::SharedPtr imu_sub_;
     std::shared_ptr<tf2_ros::Buffer> tf_buffer_;
     std::shared_ptr<tf2_ros::TransformListener> tf_listener_;
     std::shared_ptr<tf2_ros::TransformBroadcaster> tf_broadcaster_;
-    std::string input_topic_, target_frame_, output_frame_, parent_frame_;
+    std::string input_topic_, imu_topic_, target_frame_, output_frame_, parent_frame_;
     Rect map_;
     geometry_msgs::msg::TransformStamped last_tf_;
     rclcpp::TimerBase::SharedPtr timer_;
-    double last_theta_;
+    double last_theta_, imu_theta_, scan_theta_;
+    double imu_last_time_;
 
     std::vector<Point2D> transformPoints(const std::vector<Point2D> &points, double dx, double dy, double dtheta) {
         std::vector<Point2D> transformed_points(points.size());
@@ -164,6 +176,9 @@ private:
         double duration = (end - start).seconds();
         RCLCPP_INFO(this->get_logger(), "Optimization duration: %.3f ms", duration * 1000.0);
 
+        scan_theta_ += delta.theta;
+        double new_theta = imu_theta_ + scan_theta_;
+
         Point2D new_point = {last_tf_.transform.translation.x, last_tf_.transform.translation.y};
         new_point.x += (delta.x * std::cos(delta.theta) - delta.y * std::sin(delta.theta));
         new_point.y += (delta.x * std::sin(delta.theta) + delta.y * std::cos(delta.theta));
@@ -175,17 +190,27 @@ private:
         t.child_frame_id = output_frame_;
         t.transform.translation.x = new_point.x;
         t.transform.translation.y = new_point.y;
-        tf2::Quaternion q, q_delta;
-        q.setRPY(0, 0, last_theta_);
-        q_delta.setRPY(0, 0, delta.theta);
-        q *= q_delta;
+        tf2::Quaternion q;
+        q.setRPY(0, 0, new_theta);
         t.transform.rotation.x = q.x();
         t.transform.rotation.y = q.y();
         t.transform.rotation.z = q.z();
         t.transform.rotation.w = q.w();
         tf_broadcaster_->sendTransform(t);
         last_tf_ = t;
-        last_theta_ += delta.theta;
+        last_theta_ = new_theta;
+    }
+
+    void imuCallback(const sensor_msgs::msg::Imu::SharedPtr msg) {
+        double current_time = this->get_clock()->now().seconds();
+        double dt = current_time - imu_last_time_;
+        imu_last_time_ = current_time;
+        if (dt <= 0.0) {
+            RCLCPP_WARN(this->get_logger(), "Invalid time");
+            return;
+        }
+
+        imu_theta_ += msg->angular_velocity.z * dt;
     }
 
     void timerCallback() {

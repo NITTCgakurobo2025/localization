@@ -23,6 +23,7 @@ def generate_launch_description():
                 'output_frame': [name, '/odom'],
                 'parent_frame': 'map',
                 'input_topic': ['/', name, '/downsampled_front_scan'],
+                'imu_topic': ['/', name, '/imu'],
             }]
         )
     ])
