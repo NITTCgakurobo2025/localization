@@ -34,6 +34,7 @@ public:
         this->declare_parameter<std::string>("output_frame", "odom");
         this->declare_parameter<std::string>("parent_frame", "map");
         this->declare_parameter<std::string>("odom_reset_service", "odom_reset");
+        this->declare_parameter<std::string>("odom_reset_topic", "odom_reset");
         this->declare_parameter<double>("field_width", 8.0);
         this->declare_parameter<double>("field_height", 15.0);
 
@@ -44,6 +45,7 @@ public:
         this->get_parameter("output_frame", output_frame_);
         this->get_parameter("parent_frame", parent_frame_);
         this->get_parameter("odom_reset_service", odom_reset_service_);
+        this->get_parameter("odom_reset_topic", odom_reset_topic_);
 
         double field_width, field_height;
         this->get_parameter("field_width", field_width);
@@ -67,6 +69,8 @@ public:
             input_topic_, 10, std::bind(&ScanMatcher::topicCallback, this, std::placeholders::_1));
         imu_sub_ = this->create_subscription<sensor_msgs::msg::Imu>(
             imu_topic_, 10, std::bind(&ScanMatcher::imuCallback, this, std::placeholders::_1));
+        odom_reset_sub_ = this->create_subscription<geometry_msgs::msg::Pose2D>(
+            odom_reset_topic_, 10, std::bind(&ScanMatcher::odomResetCallback, this, std::placeholders::_1));
         tf_broadcaster_ = std::make_shared<tf2_ros::TransformBroadcaster>(this);
         tf_timer_ =
             this->create_wall_timer(std::chrono::milliseconds(5), std::bind(&ScanMatcher::tfTimerCallback, this));
@@ -89,9 +93,11 @@ private:
     rclcpp::Subscription<localization_msgs::msg::PointArray>::SharedPtr input_sub_;
     rclcpp::Subscription<sensor_msgs::msg::Imu>::SharedPtr imu_sub_;
     rclcpp::Publisher<geometry_msgs::msg::Pose>::SharedPtr pose_pub_;
+    rclcpp::Subscription<geometry_msgs::msg::Pose2D>::SharedPtr odom_reset_sub_;
     std::shared_ptr<rclcpp::Client<localization_msgs::srv::ResetOdometry>> odom_reset_cli_;
     std::shared_ptr<tf2_ros::TransformBroadcaster> tf_broadcaster_;
-    std::string input_topic_, imu_topic_, pose_topic_, target_frame_, output_frame_, parent_frame_, odom_reset_service_;
+    std::string input_topic_, imu_topic_, pose_topic_, target_frame_, output_frame_, parent_frame_, odom_reset_service_,
+        odom_reset_topic_;
     Rect map_;
     geometry_msgs::msg::TransformStamped last_tf_;
     rclcpp::TimerBase::SharedPtr tf_timer_, odom_reset_timer_;
@@ -241,6 +247,23 @@ private:
         }
         auto request = std::make_shared<localization_msgs::srv::ResetOdometry::Request>();
         odom_reset_cli_->async_send_request(request, std::bind(&ScanMatcher::odomReset, this, std::placeholders::_1));
+    }
+
+    void odomResetCallback(geometry_msgs::msg::Pose2D::SharedPtr msg) {
+        odomResetTimerCallback();
+
+        last_tf_.header.stamp = this->get_clock()->now();
+        last_tf_.transform.translation.x = msg->x;
+        last_tf_.transform.translation.y = msg->y;
+        tf2::Quaternion q;
+        q.setRPY(0, 0, msg->theta);
+        last_tf_.transform.rotation.x = q.x();
+        last_tf_.transform.rotation.y = q.y();
+        last_tf_.transform.rotation.z = q.z();
+        last_tf_.transform.rotation.w = q.w();
+        tf_broadcaster_->sendTransform(last_tf_);
+
+        imu_theta_ = msg->theta;
     }
 
     void odomReset(rclcpp::Client<localization_msgs::srv::ResetOdometry>::SharedFuture result) {

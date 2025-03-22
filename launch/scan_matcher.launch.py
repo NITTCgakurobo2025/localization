@@ -26,6 +26,7 @@ def generate_launch_description():
                 'imu_topic': ['/', name, '/imu'],
                 'pose_topic': ['/', name, '/pose'],
                 'odom_reset_service': ['/', name, '/odom_reset'],
+                'odom_reset_topic': ['/', name, '/odom_reset'],
             }]
         )
     ])
