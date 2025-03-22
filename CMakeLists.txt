@@ -26,6 +26,10 @@ ament_target_dependencies(scan_matcher rclcpp geometry_msgs sensor_msgs tf2 tf2_
 install(TARGETS scan_matcher
   DESTINATION lib/${PROJECT_NAME})
 
+add_executable(twist_odom src/twist_odom.cpp)
+ament_target_dependencies(twist_odom rclcpp tf2 tf2_ros std_msgs geometry_msgs localization_msgs)
+install(TARGETS twist_odom DESTINATION lib/${PROJECT_NAME})
+
 install(DIRECTORY launch/
   DESTINATION share/${PROJECT_NAME}/launch
 )

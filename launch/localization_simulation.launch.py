@@ -28,24 +28,6 @@ def generate_launch_description():
                 ),
                 launch_arguments={'robot_name': robot}.items()
             )
-        ),
-        launch_elements.append(
-            Node(
-                package='localization',
-                executable='twist_odom',
-                name=robot + '_twist_odom',
-                output='screen',
-                parameters=[{
-                    'parant_frame': robot + '/odom',
-                    'frame_id': robot + '/base_footprint',
-                            'twist_topic': robot + '/cmd_vel',
-                            'odom_topic': robot + '/pose_odom',
-                            'reset_service': robot + '/odom_reset',
-                            'x_initial': 0.0,
-                            'y_initial': 0.0,
-                            'theta_initial': 0.0
-                            }]
-            )
         )
 
     return LaunchDescription(launch_elements)
