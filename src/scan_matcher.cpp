@@ -264,6 +264,7 @@ private:
         tf_broadcaster_->sendTransform(last_tf_);
 
         imu_theta_ = msg->theta;
+        scan_theta_ = 0.0;
     }
 
     void odomReset(rclcpp::Client<localization_msgs::srv::ResetOdometry>::SharedFuture result) {
