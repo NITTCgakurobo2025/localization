@@ -19,7 +19,6 @@ def generate_launch_description():
             name=[name, '_scan_matcher'],
             output='screen',
             parameters=[{
-                'target_frame': [name, '/base_footprint'],
                 'output_frame': [name, '/odom'],
                 'parent_frame': 'map',
                 'input_topic': ['/', name, '/downsampled_front_scan'],

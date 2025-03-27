@@ -30,7 +30,6 @@ public:
         this->declare_parameter<std::string>("input_topic", "point_array");
         this->declare_parameter<std::string>("imu_topic", "imu");
         this->declare_parameter<std::string>("pose_topic", "pose");
-        this->declare_parameter<std::string>("target_frame", "base_footprint");
         this->declare_parameter<std::string>("output_frame", "odom");
         this->declare_parameter<std::string>("parent_frame", "map");
         this->declare_parameter<std::string>("odom_reset_service", "odom_reset");
@@ -41,7 +40,6 @@ public:
         this->get_parameter("input_topic", input_topic_);
         this->get_parameter("imu_topic", imu_topic_);
         this->get_parameter("pose_topic", pose_topic_);
-        this->get_parameter("target_frame", target_frame_);
         this->get_parameter("output_frame", output_frame_);
         this->get_parameter("parent_frame", parent_frame_);
         this->get_parameter("odom_reset_service", odom_reset_service_);
@@ -96,7 +94,7 @@ private:
     rclcpp::Subscription<geometry_msgs::msg::Pose2D>::SharedPtr odom_reset_sub_;
     std::shared_ptr<rclcpp::Client<localization_msgs::srv::ResetOdometry>> odom_reset_cli_;
     std::shared_ptr<tf2_ros::TransformBroadcaster> tf_broadcaster_;
-    std::string input_topic_, imu_topic_, pose_topic_, target_frame_, output_frame_, parent_frame_, odom_reset_service_,
+    std::string input_topic_, imu_topic_, pose_topic_, output_frame_, parent_frame_, odom_reset_service_,
         odom_reset_topic_;
     Rect map_;
     geometry_msgs::msg::TransformStamped last_tf_;
