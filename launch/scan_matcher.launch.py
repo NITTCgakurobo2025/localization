@@ -24,6 +24,7 @@ def generate_launch_description():
                 'input_topic': ['/', name, '/downsampled_front_scan'],
                 'imu_topic': ['/', name, '/imu'],
                 'pose_topic': ['/', name, '/pose'],
+                'transform_topic': ['/', name, '/scan_transform'],
                 'odom_reset_service': ['/', name, '/odom_reset'],
                 'odom_reset_topic': ['/', name, '/odom_reset'],
             }]

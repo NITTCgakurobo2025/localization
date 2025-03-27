@@ -3,6 +3,7 @@
 #include <geometry_msgs/msg/pose.hpp>
 #include <geometry_msgs/msg/pose2_d.hpp>
 #include <geometry_msgs/msg/transform_stamped.hpp>
+#include <geometry_msgs/msg/vector3_stamped.hpp>
 #include <rclcpp/rclcpp.hpp>
 #include <sensor_msgs/msg/imu.hpp>
 #include <string>
@@ -30,6 +31,7 @@ public:
         this->declare_parameter<std::string>("input_topic", "point_array");
         this->declare_parameter<std::string>("imu_topic", "imu");
         this->declare_parameter<std::string>("pose_topic", "pose");
+        this->declare_parameter<std::string>("transform_topic", "scan_transform");
         this->declare_parameter<std::string>("output_frame", "odom");
         this->declare_parameter<std::string>("parent_frame", "map");
         this->declare_parameter<std::string>("odom_reset_service", "odom_reset");
@@ -40,6 +42,7 @@ public:
         this->get_parameter("input_topic", input_topic_);
         this->get_parameter("imu_topic", imu_topic_);
         this->get_parameter("pose_topic", pose_topic_);
+        this->get_parameter("transform_topic", transform_topic_);
         this->get_parameter("output_frame", output_frame_);
         this->get_parameter("parent_frame", parent_frame_);
         this->get_parameter("odom_reset_service", odom_reset_service_);
@@ -69,6 +72,7 @@ public:
             imu_topic_, 10, std::bind(&ScanMatcher::imuCallback, this, std::placeholders::_1));
         odom_reset_sub_ = this->create_subscription<geometry_msgs::msg::Pose2D>(
             odom_reset_topic_, 10, std::bind(&ScanMatcher::odomResetCallback, this, std::placeholders::_1));
+        transform_pub_ = this->create_publisher<geometry_msgs::msg::Vector3Stamped>(transform_topic_, 10);
         tf_broadcaster_ = std::make_shared<tf2_ros::TransformBroadcaster>(this);
         tf_timer_ =
             this->create_wall_timer(std::chrono::milliseconds(5), std::bind(&ScanMatcher::tfTimerCallback, this));
@@ -92,10 +96,11 @@ private:
     rclcpp::Subscription<sensor_msgs::msg::Imu>::SharedPtr imu_sub_;
     rclcpp::Publisher<geometry_msgs::msg::Pose>::SharedPtr pose_pub_;
     rclcpp::Subscription<geometry_msgs::msg::Pose2D>::SharedPtr odom_reset_sub_;
+    rclcpp::Publisher<geometry_msgs::msg::Vector3Stamped>::SharedPtr transform_pub_;
     std::shared_ptr<rclcpp::Client<localization_msgs::srv::ResetOdometry>> odom_reset_cli_;
     std::shared_ptr<tf2_ros::TransformBroadcaster> tf_broadcaster_;
-    std::string input_topic_, imu_topic_, pose_topic_, output_frame_, parent_frame_, odom_reset_service_,
-        odom_reset_topic_;
+    std::string input_topic_, imu_topic_, pose_topic_, transform_topic_, output_frame_, parent_frame_,
+        odom_reset_service_, odom_reset_topic_;
     Rect map_;
     geometry_msgs::msg::TransformStamped last_tf_;
     rclcpp::TimerBase::SharedPtr tf_timer_, odom_reset_timer_;
@@ -219,6 +224,13 @@ private:
         pose.orientation.z = q.z();
         pose.orientation.w = q.w();
         pose_pub_->publish(pose);
+
+        geometry_msgs::msg::Vector3Stamped transform;
+        transform.header.stamp = msg->header.stamp;
+        transform.vector.x = delta.x;
+        transform.vector.y = delta.y;
+        transform.vector.z = delta.theta;
+        transform_pub_->publish(transform);
     }
 
     void imuCallback(const sensor_msgs::msg::Imu::SharedPtr msg) {
