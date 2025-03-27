@@ -21,7 +21,7 @@ def generate_launch_description():
             parameters=[{
                 'output_frame': [name, '/odom'],
                 'parent_frame': 'map',
-                'input_topic': ['/', name, '/downsampled_front_scan'],
+                'input_topic': ['/', name, '/downsampled_scan'],
                 'imu_topic': ['/', name, '/imu'],
                 'pose_topic': ['/', name, '/pose'],
                 'transform_topic': ['/', name, '/scan_transform'],

@@ -65,6 +65,16 @@ public:
         this->declare_parameter<int>("max_iterations", 50);
         this->declare_parameter<double>("max_step", 0.01);
         this->declare_parameter<double>("max_step_theta", 0.01);
+        this->declare_parameter<double>("correction_rate", 0.25);
+
+        /*
+        correction_rateについて
+        大きくしすぎると発散してしまうため危険
+        小さくしすぎると収束が遅くなる
+        シミュレーター上の場合はLiDAR1つの場合は0.8程度
+        LiDAR2つの場合は0.25程度が適切
+        実機は未検証
+         */
 
         input_sub_ = this->create_subscription<localization_msgs::msg::PointArray>(
             input_topic_, 10, std::bind(&ScanMatcher::topicCallback, this, std::placeholders::_1));
@@ -167,6 +177,11 @@ private:
 
             learning_rate *= 0.9;
         }
+
+        double correction_rate = this->get_parameter("correction_rate").as_double();
+        dx *= correction_rate;
+        dy *= correction_rate;
+        dtheta *= correction_rate;
 
         geometry_msgs::msg::Pose2D pose;
         pose.x = dx;
